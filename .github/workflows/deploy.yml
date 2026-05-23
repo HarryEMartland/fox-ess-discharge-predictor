@@ -1,8 +1,9 @@
 name: Deploy
 
 on:
-  push:
-    branches: [main, master]
+  workflow_run:
+    workflow: CI
+    types: [completed]
   workflow_dispatch:
 
 env:
@@ -18,6 +19,9 @@ jobs:
     name: Deploy to AWS
     runs-on: ubuntu-latest
     environment: production
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.status == 'completed'
 
     steps:
       - name: Checkout
