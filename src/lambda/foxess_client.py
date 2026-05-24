@@ -13,7 +13,7 @@ HISTORY_PATH = '/op/v0/device/history/query'
 
 @dataclass
 class HistoryDataPoint:
-    time: int
+    time: int | str
     value: float
 
 
@@ -21,12 +21,13 @@ class HistoryDataPoint:
 class HistoryVariable:
     variable: str
     unit: str
+    name: str = ''
     data: list[HistoryDataPoint] = field(default_factory=list)
 
 
 @dataclass
-class HistoryResult:
-    sn: str
+class HistoryDeviceResult:
+    device_sn: str
     variables: list[HistoryVariable] = field(default_factory=list)
 
 
@@ -41,7 +42,7 @@ class FoxESSClient:
 
     def _build_headers(self, path: str) -> dict:
         timestamp = str(int(time.time() * 1000))
-        raw = f'{path}\r\n{self.api_key}\r\n{timestamp}'
+        raw = rf'{path}\r\n{self.api_key}\r\n{timestamp}'
         signature = hashlib.md5(raw.encode('utf-8')).hexdigest()
         return {
             'token': self.api_key,
@@ -57,7 +58,7 @@ class FoxESSClient:
         variables: list[str] | None = None,
         begin: int | None = None,
         end: int | None = None,
-    ) -> HistoryResult:
+    ) -> list[HistoryDeviceResult]:
         body: dict = {'sn': sn}
         if variables is not None:
             body['variables'] = variables
@@ -78,22 +79,58 @@ class FoxESSClient:
         if errno != 0:
             raise FoxESSClientError(f'API error (errno={errno}): {payload.get("msg", "unknown")}')
 
-        result_data = payload.get('result', {})
-        sn_value = result_data.get('sn', sn)
-        variables_raw = result_data.get('data', [])
-
-        variables_list = []
-        for var_item in variables_raw:
-            points = [
-                HistoryDataPoint(time=dp['time'], value=dp['value'])
-                for dp in var_item.get('data', [])
-            ]
-            variables_list.append(
-                HistoryVariable(
-                    variable=var_item.get('variable', ''),
-                    unit=var_item.get('unit', ''),
-                    data=points,
+        results: list[HistoryDeviceResult] = []
+        for device_result in payload.get('result', []):
+            device_sn = device_result.get('deviceSN', sn)
+            variables_list = []
+            for var_item in device_result.get('datas', []):
+                points = [
+                    HistoryDataPoint(time=dp['time'], value=dp['value'])
+                    for dp in var_item.get('data', [])
+                ]
+                variables_list.append(
+                    HistoryVariable(
+                        variable=var_item.get('variable', ''),
+                        unit=var_item.get('unit', ''),
+                        name=var_item.get('name', ''),
+                        data=points,
+                    )
                 )
-            )
+            results.append(HistoryDeviceResult(device_sn=device_sn, variables=variables_list))
 
-        return HistoryResult(sn=sn_value, variables=variables_list)
+        return results
+
+
+if __name__ == '__main__':
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description='FoxESS device history query')
+    parser.add_argument('api_key', help='FoxESS API key')
+    parser.add_argument('sn', help='Device serial number')
+    parser.add_argument('--variables', nargs='*', default=None, help='Variables to query')
+    parser.add_argument('--begin', type=int, default=None, help='Start timestamp (ms)')
+    parser.add_argument('--end', type=int, default=None, help='End timestamp (ms)')
+    parser.add_argument('--base-url', default=BASE_URL, help='API base URL')
+    args = parser.parse_args()
+
+    client = FoxESSClient(api_key=args.api_key, base_url=args.base_url)
+
+    sn = args.sn
+    print(f'Querying history for device {sn}...', file=sys.stderr)
+
+    results = client.get_device_history(
+        sn=sn,
+        variables=args.variables,
+        begin=args.begin,
+        end=args.end,
+    )
+
+    for device_result in results:
+        print(f'\nDevice: {device_result.device_sn}')
+        for var in device_result.variables:
+            print(f'\n  Variable: {var.variable} ({var.unit})')
+            if not var.data:
+                print('    (no data)')
+            for dp in var.data:
+                print(f'    time={dp.time}  value={dp.value}')

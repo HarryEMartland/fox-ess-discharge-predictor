@@ -6,7 +6,7 @@ from foxess_client import (
     FoxESSClient,
     FoxESSClientError,
     HistoryDataPoint,
-    HistoryResult,
+    HistoryDeviceResult,
     HistoryVariable,
 )
 
@@ -17,27 +17,31 @@ HISTORY_PATH = '/op/v0/device/history/query'
 
 MOCK_SUCCESS_BODY = {
     'errno': 0,
-    'result': {
-        'sn': MOCK_SN,
-        'data': [
-            {
-                'variable': 'pvPower',
-                'unit': 'kW',
-                'data': [
-                    {'time': 1712534400000, 'value': 1.5},
-                    {'time': 1712534700000, 'value': 1.8},
-                ],
-            },
-            {
-                'variable': 'feedinPower',
-                'unit': 'kW',
-                'data': [
-                    {'time': 1712534400000, 'value': 0.3},
-                    {'time': 1712534700000, 'value': 0.5},
-                ],
-            },
-        ],
-    },
+    'result': [
+        {
+            'deviceSN': MOCK_SN,
+            'datas': [
+                {
+                    'variable': 'pvPower',
+                    'unit': 'kW',
+                    'name': 'PVPower',
+                    'data': [
+                        {'time': 1712534400000, 'value': 1.5},
+                        {'time': 1712534700000, 'value': 1.8},
+                    ],
+                },
+                {
+                    'variable': 'feedinPower',
+                    'unit': 'kW',
+                    'name': 'FeedinPower',
+                    'data': [
+                        {'time': 1712534400000, 'value': 0.3},
+                        {'time': 1712534700000, 'value': 0.5},
+                    ],
+                },
+            ],
+        },
+    ],
 }
 
 
@@ -69,7 +73,7 @@ class TestFoxESSClientAuth:
     def test_build_headers_signature_is_valid_md5(self):
         client = FoxESSClient(api_key='my-key')
         headers = client._build_headers(HISTORY_PATH)
-        raw = f'{HISTORY_PATH}\r\nmy-key\r\n{headers["timestamp"]}'
+        raw = rf'{HISTORY_PATH}\r\nmy-key\r\n{headers["timestamp"]}'
         expected = hashlib.md5(raw.encode('utf-8')).hexdigest()
         assert headers['signature'] == expected
 
@@ -85,40 +89,47 @@ class TestFoxESSClientAuth:
 
 
 class TestFoxESSClientRequests:
-    def test_get_device_history_returns_result(self, httpserver, client):
+    def test_get_device_history_returns_list(self, httpserver, client):
         httpserver.expect_request(HISTORY_PATH, method='POST').respond_with_json(MOCK_SUCCESS_BODY)
-        result = client.get_device_history(sn=MOCK_SN)
-        assert isinstance(result, HistoryResult)
-        assert result.sn == MOCK_SN
+        results = client.get_device_history(sn=MOCK_SN)
+        assert isinstance(results, list)
+        assert len(results) == 1
+
+    def test_get_device_history_returns_device_sn(self, httpserver, client):
+        httpserver.expect_request(HISTORY_PATH, method='POST').respond_with_json(MOCK_SUCCESS_BODY)
+        results = client.get_device_history(sn=MOCK_SN)
+        assert results[0].device_sn == MOCK_SN
 
     def test_get_device_history_returns_expected_variables(self, httpserver, client):
         httpserver.expect_request(HISTORY_PATH, method='POST').respond_with_json(MOCK_SUCCESS_BODY)
-        result = client.get_device_history(sn=MOCK_SN, variables=['pvPower', 'feedinPower'])
-        assert len(result.variables) == 2
-        assert result.variables[0].variable == 'pvPower'
-        assert result.variables[1].variable == 'feedinPower'
+        results = client.get_device_history(sn=MOCK_SN, variables=['pvPower', 'feedinPower'])
+        assert len(results[0].variables) == 2
+        assert results[0].variables[0].variable == 'pvPower'
+        assert results[0].variables[1].variable == 'feedinPower'
 
     def test_get_device_history_returns_datapoints(self, httpserver, client):
         body = {
             'errno': 0,
-            'result': {
-                'sn': MOCK_SN,
-                'data': [
-                    {
-                        'variable': 'pvPower',
-                        'unit': 'kW',
-                        'data': [
-                            {'time': 1712534400000, 'value': 1.5},
-                            {'time': 1712534700000, 'value': 1.8},
-                        ],
-                    },
-                ],
-            },
+            'result': [
+                {
+                    'deviceSN': MOCK_SN,
+                    'datas': [
+                        {
+                            'variable': 'pvPower',
+                            'unit': 'kW',
+                            'name': 'PVPower',
+                            'data': [
+                                {'time': 1712534400000, 'value': 1.5},
+                                {'time': 1712534700000, 'value': 1.8},
+                            ],
+                        },
+                    ],
+                },
+            ],
         }
         httpserver.expect_request(HISTORY_PATH, method='POST').respond_with_json(body)
-        result = client.get_device_history(sn=MOCK_SN, variables=['pvPower'])
-        assert len(result.variables) == 1
-        var = result.variables[0]
+        results = client.get_device_history(sn=MOCK_SN, variables=['pvPower'])
+        var = results[0].variables[0]
         assert len(var.data) == 2
         assert var.data[0].time == 1712534400000
         assert var.data[0].value == 1.5
@@ -127,36 +138,38 @@ class TestFoxESSClientRequests:
 
     def test_get_device_history_no_variables_returns_all(self, httpserver, client):
         httpserver.expect_request(HISTORY_PATH, method='POST').respond_with_json(MOCK_SUCCESS_BODY)
-        result = client.get_device_history(sn=MOCK_SN)
-        assert len(result.variables) > 0
+        results = client.get_device_history(sn=MOCK_SN)
+        assert len(results[0].variables) > 0
 
     def test_get_device_history_with_time_range(self, httpserver, client):
         httpserver.expect_request(HISTORY_PATH, method='POST').respond_with_json(MOCK_SUCCESS_BODY)
         begin = 1712534400000
         end = 1712620800000
-        result = client.get_device_history(sn=MOCK_SN, variables=['pvPower'], begin=begin, end=end)
-        assert result.variables[0].variable == 'pvPower'
+        results = client.get_device_history(sn=MOCK_SN, variables=['pvPower'], begin=begin, end=end)
+        assert results[0].variables[0].variable == 'pvPower'
 
     def test_get_device_history_unit_is_returned(self, httpserver, client):
         httpserver.expect_request(HISTORY_PATH, method='POST').respond_with_json(MOCK_SUCCESS_BODY)
-        result = client.get_device_history(sn=MOCK_SN, variables=['pvPower'])
-        assert result.variables[0].unit == 'kW'
+        results = client.get_device_history(sn=MOCK_SN, variables=['pvPower'])
+        assert results[0].variables[0].unit == 'kW'
 
     def test_get_device_history_empty_variable_returns_empty_data(self, httpserver, client):
         body = {
             'errno': 0,
-            'result': {
-                'sn': MOCK_SN,
-                'data': [
-                    {'variable': 'unknownVar', 'unit': '', 'data': []},
-                ],
-            },
+            'result': [
+                {
+                    'deviceSN': MOCK_SN,
+                    'datas': [
+                        {'variable': 'unknownVar', 'unit': '', 'name': '', 'data': []},
+                    ],
+                },
+            ],
         }
         httpserver.expect_request(HISTORY_PATH, method='POST').respond_with_json(body)
-        result = client.get_device_history(sn=MOCK_SN, variables=['unknownVar'])
-        assert len(result.variables) == 1
-        assert result.variables[0].variable == 'unknownVar'
-        assert result.variables[0].data == []
+        results = client.get_device_history(sn=MOCK_SN, variables=['unknownVar'])
+        assert len(results[0].variables) == 1
+        assert results[0].variables[0].variable == 'unknownVar'
+        assert results[0].variables[0].data == []
 
 
 class TestFoxESSClientErrors:
@@ -183,28 +196,40 @@ class TestFoxESSClientErrors:
             client.get_device_history(sn='')
 
 
-class TestHistoryResultDataclass:
-    def test_history_result_defaults(self):
-        result = HistoryResult(sn='SN123')
-        assert result.sn == 'SN123'
+class TestHistoryDeviceResultDataclass:
+    def test_defaults(self):
+        result = HistoryDeviceResult(device_sn='SN123')
+        assert result.device_sn == 'SN123'
         assert result.variables == []
 
-    def test_history_result_with_variables(self):
+    def test_with_variables(self):
         var = HistoryVariable(
             variable='pvPower', unit='kW', data=[HistoryDataPoint(time=1, value=2.0)]
         )
-        result = HistoryResult(sn='SN123', variables=[var])
+        result = HistoryDeviceResult(device_sn='SN123', variables=[var])
         assert len(result.variables) == 1
         assert result.variables[0].data[0].value == 2.0
 
 
 class TestHistoryVariableDataclass:
-    def test_history_variable_defaults(self):
+    def test_defaults(self):
         var = HistoryVariable(variable='pvPower', unit='kW')
         assert var.data == []
+        assert var.name == ''
 
-    def test_history_variable_with_data(self):
+    def test_with_data(self):
         dp = HistoryDataPoint(time=1712534400000, value=1.5)
-        var = HistoryVariable(variable='pvPower', unit='kW', data=[dp])
+        var = HistoryVariable(variable='pvPower', unit='kW', name='PVPower', data=[dp])
         assert var.data[0].time == 1712534400000
         assert var.data[0].value == 1.5
+        assert var.name == 'PVPower'
+
+
+class TestHistoryDataPointDataclass:
+    def test_time_as_int(self):
+        dp = HistoryDataPoint(time=1712534400000, value=1.5)
+        assert dp.time == 1712534400000
+
+    def test_time_as_str(self):
+        dp = HistoryDataPoint(time='2024-04-07T18:00:00Z', value=1.5)
+        assert dp.time == '2024-04-07T18:00:00Z'
