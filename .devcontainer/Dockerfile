@@ -18,3 +18,4 @@ RUN python3 -m venv /opt/venv \
     && rm -rf ~/.cache/pip
 
 RUN npm install -g aws-cdk
+RUN npm install -g opencode-ai
