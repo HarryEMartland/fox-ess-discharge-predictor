@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = 'https://www.foxesscloud.com'
 HISTORY_PATH = '/op/v0/device/history/query'
 DEVICE_DETAIL_PATH = '/op/v1/device/detail'
+SCHEDULER_ENABLE_PATH = '/op/v2/device/scheduler/enable'
 
 
 @dataclass
@@ -63,6 +64,35 @@ class DeviceDetail:
     third_party_gen: bool = False
     function: DeviceFunction | None = None
     battery_list: list[BatteryInfo] = field(default_factory=list)
+
+
+@dataclass
+class SchedulerExtraParam:
+    minSocOnGrid: float | None = None
+    fdSoc: float | None = None
+    fdPwr: float | None = None
+    maxSoc: float | None = None
+    importLimit: float | None = None
+    exportLimit: float | None = None
+    pvLimit: float | None = None
+    reactivePower: float | None = None
+
+
+@dataclass
+class TimeSegment:
+    enable: int
+    startHour: int
+    startMinute: int
+    endHour: int
+    endMinute: int
+    workMode: str
+    extraParam: SchedulerExtraParam | None = None
+
+
+@dataclass
+class SchedulerEnableResult:
+    device_sn: str
+    is_default: bool = False
 
 
 class FoxESSClientError(Exception):
@@ -185,6 +215,50 @@ class FoxESSClient:
             third_party_gen=result.get('thirdPartyGen', False),
             function=function,
             battery_list=battery_list,
+        )
+
+
+    def set_time_segment(
+        self,
+        device_sn: str,
+        groups: list[TimeSegment],
+        is_default: bool = False,
+    ) -> SchedulerEnableResult:
+        body: dict = {'deviceSN': device_sn, 'groups': []}
+        for g in groups:
+            group_dict = {
+                'enable': g.enable,
+                'startHour': g.startHour,
+                'startMinute': g.startMinute,
+                'endHour': g.endHour,
+                'endMinute': g.endMinute,
+                'workMode': g.workMode,
+            }
+            if g.extraParam is not None:
+                extra = {k: v for k, v in vars(g.extraParam).items() if v is not None}
+                if extra:
+                    group_dict['extraParam'] = extra
+            body['groups'].append(group_dict)
+
+        if is_default:
+            body['isDefault'] = True
+
+        url = f'{self.base_url}{SCHEDULER_ENABLE_PATH}'
+        headers = self._build_headers(SCHEDULER_ENABLE_PATH)
+
+        logger.info('Setting time segment for device %s (%d groups)', device_sn, len(groups))
+        resp = requests.post(url, json=body, headers=headers, timeout=30)
+        resp.raise_for_status()
+
+        payload = resp.json()
+        errno = payload.get('errno', -1)
+        if errno != 0:
+            raise FoxESSClientError(f'API error (errno={errno}): {payload.get("msg", "unknown")}')
+
+        result = payload.get('result', {})
+        return SchedulerEnableResult(
+            device_sn=result.get('deviceSN', ''),
+            is_default=result.get('isDefault', False),
         )
 
 
