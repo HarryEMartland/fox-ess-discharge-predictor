@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -13,11 +14,15 @@ def _context(function_name: str = 'fox-ess-discharge-predictor') -> SimpleNamesp
     )
 
 
+def _run_handler(event: dict, context: object) -> dict:
+    return asyncio.run(handler(event, context))
+
+
 def test_handler_returns_200():
     event = {}
     context = _context()
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
 
     assert result['statusCode'] == 200
 
@@ -26,7 +31,7 @@ def test_handler_returns_valid_json_body():
     event = {}
     context = _context()
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
     body = json.loads(result['body'])
 
     assert isinstance(body, dict)
@@ -36,7 +41,7 @@ def test_handler_body_contains_expected_keys():
     event = {}
     context = _context()
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
     body = json.loads(result['body'])
 
     assert 'timestamp' in body
@@ -50,7 +55,7 @@ def test_handler_prediction_contains_expected_keys():
     event = {}
     context = _context()
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
     prediction = json.loads(result['body'])['prediction']
 
     assert 'discharge_probability' in prediction
@@ -63,7 +68,7 @@ def test_handler_prediction_values():
     event = {}
     context = _context()
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
     prediction = json.loads(result['body'])['prediction']
 
     assert prediction['discharge_probability'] == 0.65
@@ -76,7 +81,7 @@ def test_handler_status_is_completed():
     event = {}
     context = _context()
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
     body = json.loads(result['body'])
 
     assert body['status'] == 'completed'
@@ -86,7 +91,7 @@ def test_handler_uses_context_function_name():
     event = {}
     context = _context(function_name='custom-function-name')
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
     body = json.loads(result['body'])
 
     assert body['function_name'] == 'custom-function-name'
@@ -96,7 +101,7 @@ def test_handler_uses_default_function_name_when_missing():
     event = {}
     context = SimpleNamespace(aws_request_id='test-123')
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
     body = json.loads(result['body'])
 
     assert body['function_name'] == 'fox-ess-discharge-predictor'
@@ -106,7 +111,7 @@ def test_handler_timestamp_is_iso_format():
     event = {}
     context = _context()
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
     body = json.loads(result['body'])
     timestamp = body['timestamp']
 
@@ -122,7 +127,7 @@ def test_handler_timestamp_is_current_time(mock_datetime):
     event = {}
     context = _context()
 
-    result = handler(event, context)
+    result = _run_handler(event, context)
     body = json.loads(result['body'])
 
     assert body['timestamp'] == fixed_time.isoformat()
