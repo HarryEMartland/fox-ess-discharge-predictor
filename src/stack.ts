@@ -28,6 +28,12 @@ export class FoxEssDischargePredictorStack extends Stack {
       functionName: 'fox-ess-discharge-predictor',
       memorySize: 128,
       timeout: Duration.seconds(60),
+      environment: {
+        FOXESS_API_KEY: process.env.FOXESS_API_KEY || '',
+        FOXESS_DEVICE_SN: process.env.FOXESS_DEVICE_SN || '',
+        OCTOPUS_API_KEY: process.env.OCTOPUS_API_KEY || '',
+        OCTOPUS_ACCOUNT_NUMBER: process.env.OCTOPUS_ACCOUNT_NUMBER || '',
+      },
     });
 
     new Rule(this, 'DailyScheduleRule', {

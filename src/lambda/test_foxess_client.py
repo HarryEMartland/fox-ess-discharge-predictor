@@ -416,7 +416,11 @@ class TestFoxESSClientScheduler:
         )
         groups = [
             TimeSegment(
-                enable=1, startHour=0, startMinute=0, endHour=1, endMinute=59,
+                enable=1,
+                startHour=0,
+                startMinute=0,
+                endHour=1,
+                endMinute=59,
                 workMode='SelfUse',
             ),
         ]
@@ -431,7 +435,11 @@ class TestFoxESSClientScheduler:
         )
         groups = [
             TimeSegment(
-                enable=1, startHour=2, startMinute=0, endHour=4, endMinute=0,
+                enable=1,
+                startHour=2,
+                startMinute=0,
+                endHour=4,
+                endMinute=0,
                 workMode='ForceCharge',
                 extraParam=SchedulerExtraParam(minSocOnGrid=10, fdSoc=90, fdPwr=3000),
             ),
@@ -444,8 +452,12 @@ class TestFoxESSClientScheduler:
             MOCK_SCHEDULER_ENABLE_BODY
         )
         groups = [
-            TimeSegment(enable=1, startHour=0, startMinute=0, endHour=6, endMinute=0, workMode='SelfUse'),
-            TimeSegment(enable=1, startHour=6, startMinute=0, endHour=12, endMinute=0, workMode='Feedin'),
+            TimeSegment(
+                enable=1, startHour=0, startMinute=0, endHour=6, endMinute=0, workMode='SelfUse'
+            ),
+            TimeSegment(
+                enable=1, startHour=6, startMinute=0, endHour=12, endMinute=0, workMode='Feedin'
+            ),
         ]
         result = client.set_time_segment(device_sn=MOCK_SN, groups=groups)
         assert result.device_sn == MOCK_SN
@@ -457,7 +469,9 @@ class TestFoxESSClientScheduler:
         }
         httpserver.expect_request(SCHEDULER_ENABLE_PATH, method='POST').respond_with_json(body)
         groups = [
-            TimeSegment(enable=1, startHour=0, startMinute=0, endHour=23, endMinute=59, workMode='SelfUse'),
+            TimeSegment(
+                enable=1, startHour=0, startMinute=0, endHour=23, endMinute=59, workMode='SelfUse'
+            ),
         ]
         result = client.set_time_segment(device_sn=MOCK_SN, groups=groups, is_default=True)
         assert result.is_default is True
@@ -482,7 +496,11 @@ class TestFoxESSClientScheduler:
         )
         groups = [
             TimeSegment(
-                enable=1, startHour=0, startMinute=0, endHour=1, endMinute=0,
+                enable=1,
+                startHour=0,
+                startMinute=0,
+                endHour=1,
+                endMinute=0,
                 workMode='SelfUse',
                 extraParam=SchedulerExtraParam(),
             ),
@@ -519,7 +537,9 @@ class TestSchedulerExtraParamDataclass:
 
 class TestTimeSegmentDataclass:
     def test_basic(self):
-        t = TimeSegment(enable=1, startHour=0, startMinute=0, endHour=23, endMinute=59, workMode='SelfUse')
+        t = TimeSegment(
+            enable=1, startHour=0, startMinute=0, endHour=23, endMinute=59, workMode='SelfUse'
+        )
         assert t.enable == 1
         assert t.startHour == 0
         assert t.endHour == 23
@@ -529,8 +549,13 @@ class TestTimeSegmentDataclass:
     def test_with_extra_param(self):
         extra = SchedulerExtraParam(fdSoc=90)
         t = TimeSegment(
-            enable=1, startHour=0, startMinute=0, endHour=1, endMinute=0,
-            workMode='ForceDischarge', extraParam=extra,
+            enable=1,
+            startHour=0,
+            startMinute=0,
+            endHour=1,
+            endMinute=0,
+            workMode='ForceDischarge',
+            extraParam=extra,
         )
         assert t.extraParam is not None
         assert t.extraParam.fdSoc == 90

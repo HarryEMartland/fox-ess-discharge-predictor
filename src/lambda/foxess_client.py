@@ -217,7 +217,6 @@ class FoxESSClient:
             battery_list=battery_list,
         )
 
-
     def set_time_segment(
         self,
         device_sn: str,
