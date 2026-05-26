@@ -1,6 +1,10 @@
 import json
 import logging
-from datetime import datetime, timezone
+import os
+from datetime import UTC, datetime
+
+from foxess_client import FoxESSClient
+from octopus_energy import OctopusEnergyConsumerClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -11,7 +15,43 @@ def handler(event: dict, context: dict) -> dict:
     logger.info(f'Event: {json.dumps(event)}')
     logger.info(f'Context: {json.dumps(context)}')
 
-    current_time = datetime.now(timezone.utc)
+    foxess_api_key = os.environ.get('FOXESS_API_KEY')
+    foxess_device_sn = os.environ.get('FOXESS_DEVICE_SN')
+    if foxess_api_key and foxess_device_sn:
+        try:
+            client = FoxESSClient(api_key=foxess_api_key)
+            detail = client.get_device_detail(sn=foxess_device_sn)
+            for battery in detail.battery_list:
+                logger.info(
+                    'Battery capacity: sn=%s, model=%s, capacity=%d',
+                    battery.battery_sn,
+                    battery.model,
+                    battery.capacity,
+                )
+        except Exception:
+            logger.warning('Failed to fetch FoxESS device details', exc_info=True)
+    else:
+        logger.warning('FOXESS_API_KEY or FOXESS_DEVICE_SN not set, skipping FoxESS data')
+
+    octopus_api_key = os.environ.get('OCTOPUS_API_KEY')
+    octopus_account_number = os.environ.get('OCTOPUS_ACCOUNT_NUMBER')
+    if octopus_api_key and octopus_account_number:
+        try:
+            octopus_client = OctopusEnergyConsumerClient(api_token=octopus_api_key)
+            meters = octopus_client.get_meters(account_number=octopus_account_number)
+            for meter in meters:
+                logger.info(
+                    'Octopus product: serial=%s, type=%s, generation=%s',
+                    meter.serial_number,
+                    meter.energy_type,
+                    meter.generation,
+                )
+        except Exception:
+            logger.warning('Failed to fetch Octopus account products', exc_info=True)
+    else:
+        logger.warning('OCTOPUS_API_KEY or OCTOPUS_ACCOUNT_NUMBER not set, skipping Octopus data')
+
+    current_time = datetime.now(UTC)
 
     prediction_data = {
         'timestamp': current_time.isoformat(),
