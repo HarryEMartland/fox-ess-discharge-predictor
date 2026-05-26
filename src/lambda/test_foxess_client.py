@@ -3,6 +3,9 @@ import hashlib
 import pytest
 import requests
 from foxess_client import (
+    BatteryInfo,
+    DeviceDetail,
+    DeviceFunction,
     FoxESSClient,
     FoxESSClientError,
     HistoryDataPoint,
@@ -14,6 +17,7 @@ MOCK_API_KEY = 'test-api-key-12345'
 MOCK_SN = 'ABC123DEF'
 
 HISTORY_PATH = '/op/v0/device/history/query'
+DEVICE_DETAIL_PATH = '/op/v1/device/detail'
 
 MOCK_SUCCESS_BODY = {
     'errno': 0,
@@ -42,6 +46,36 @@ MOCK_SUCCESS_BODY = {
             ],
         },
     ],
+}
+
+
+MOCK_DEVICE_DETAIL_BODY = {
+    'errno': 0,
+    'result': {
+        'deviceSN': MOCK_SN,
+        'moduleSN': 'MOD123',
+        'stationID': 'STN456',
+        'stationName': 'Test Station',
+        'afciVersion': '1.0',
+        'managerVersion': '2.0',
+        'masterVersion': '3.0',
+        'slaveVersion': '4.0',
+        'hardwareVersion': '5.0',
+        'status': 1,
+        'capacity': 5.0,
+        'thirdPartyGen': False,
+        'function': {'scheduler': True},
+        'batteryList': [
+            {
+                'batterySN': 'BAT001',
+                'type': 'master',
+                'version': '1.1',
+                'model': 'LV5200',
+                'capicty': 5200,
+                'productDate': 1700000000000,
+            },
+        ],
+    },
 }
 
 
@@ -196,6 +230,80 @@ class TestFoxESSClientErrors:
             client.get_device_history(sn='')
 
 
+class TestFoxESSClientDeviceDetail:
+    def test_get_device_detail_success(self, httpserver, client):
+        httpserver.expect_request(DEVICE_DETAIL_PATH, method='GET').respond_with_json(
+            MOCK_DEVICE_DETAIL_BODY
+        )
+        detail = client.get_device_detail(sn=MOCK_SN)
+        assert isinstance(detail, DeviceDetail)
+        assert detail.device_sn == MOCK_SN
+        assert detail.module_sn == 'MOD123'
+        assert detail.station_id == 'STN456'
+        assert detail.station_name == 'Test Station'
+        assert detail.afci_version == '1.0'
+        assert detail.manager_version == '2.0'
+        assert detail.master_version == '3.0'
+        assert detail.slave_version == '4.0'
+        assert detail.hardware_version == '5.0'
+        assert detail.status == 1
+        assert detail.capacity == 5.0
+        assert detail.third_party_gen is False
+
+    def test_get_device_detail_with_batteries(self, httpserver, client):
+        httpserver.expect_request(DEVICE_DETAIL_PATH, method='GET').respond_with_json(
+            MOCK_DEVICE_DETAIL_BODY
+        )
+        detail = client.get_device_detail(sn=MOCK_SN)
+        assert len(detail.battery_list) == 1
+        bat = detail.battery_list[0]
+        assert bat.battery_sn == 'BAT001'
+        assert bat.type == 'master'
+        assert bat.version == '1.1'
+        assert bat.model == 'LV5200'
+        assert bat.capacity == 5200
+        assert bat.product_date == 1700000000000
+
+    def test_get_device_detail_with_function(self, httpserver, client):
+        httpserver.expect_request(DEVICE_DETAIL_PATH, method='GET').respond_with_json(
+            MOCK_DEVICE_DETAIL_BODY
+        )
+        detail = client.get_device_detail(sn=MOCK_SN)
+        assert detail.function is not None
+        assert detail.function.scheduler is True
+
+    def test_get_device_detail_no_batteries(self, httpserver, client):
+        body = {
+            'errno': 0,
+            'result': {
+                'deviceSN': MOCK_SN,
+                'moduleSN': 'MOD123',
+                'stationID': 'STN456',
+                'stationName': 'Test Station',
+                'capacity': 3.6,
+                'status': 1,
+            },
+        }
+        httpserver.expect_request(DEVICE_DETAIL_PATH, method='GET').respond_with_json(body)
+        detail = client.get_device_detail(sn=MOCK_SN)
+        assert detail.battery_list == []
+        assert detail.function is None
+
+    def test_get_device_detail_api_error(self, httpserver, client):
+        body = {'errno': 40001, 'msg': 'device not found'}
+        httpserver.expect_request(DEVICE_DETAIL_PATH, method='GET').respond_with_json(body)
+        with pytest.raises(FoxESSClientError) as exc:
+            client.get_device_detail(sn='UNKNOWN')
+        assert 'device not found' in str(exc.value)
+
+    def test_get_device_detail_empty_result(self, httpserver, client):
+        body = {'errno': 0, 'result': {}}
+        httpserver.expect_request(DEVICE_DETAIL_PATH, method='GET').respond_with_json(body)
+        with pytest.raises(FoxESSClientError) as exc:
+            client.get_device_detail(sn=MOCK_SN)
+        assert 'empty result' in str(exc.value)
+
+
 class TestHistoryDeviceResultDataclass:
     def test_defaults(self):
         result = HistoryDeviceResult(device_sn='SN123')
@@ -233,3 +341,56 @@ class TestHistoryDataPointDataclass:
     def test_time_as_str(self):
         dp = HistoryDataPoint(time='2024-04-07T18:00:00Z', value=1.5)
         assert dp.time == '2024-04-07T18:00:00Z'
+
+
+class TestDeviceDetailDataclass:
+    def test_defaults(self):
+        detail = DeviceDetail()
+        assert detail.device_sn == ''
+        assert detail.battery_list == []
+        assert detail.function is None
+
+    def test_with_all_fields(self):
+        func = DeviceFunction(scheduler=True)
+        bat = BatteryInfo(battery_sn='BAT001', model='LV5200')
+        detail = DeviceDetail(
+            device_sn='SN123',
+            module_sn='MOD456',
+            status=1,
+            capacity=5.0,
+            third_party_gen=True,
+            function=func,
+            battery_list=[bat],
+        )
+        assert detail.device_sn == 'SN123'
+        assert detail.module_sn == 'MOD456'
+        assert detail.status == 1
+        assert detail.capacity == 5.0
+        assert detail.third_party_gen is True
+        assert detail.function is func
+        assert detail.battery_list == [bat]
+
+
+class TestBatteryInfoDataclass:
+    def test_defaults(self):
+        bat = BatteryInfo()
+        assert bat.battery_sn == ''
+        assert bat.type == ''
+        assert bat.capacity == 0
+
+    def test_with_fields(self):
+        bat = BatteryInfo(battery_sn='BAT001', type='master', model='LV5200', capacity=5200)
+        assert bat.battery_sn == 'BAT001'
+        assert bat.type == 'master'
+        assert bat.model == 'LV5200'
+        assert bat.capacity == 5200
+
+
+class TestDeviceFunctionDataclass:
+    def test_defaults(self):
+        func = DeviceFunction()
+        assert func.scheduler is False
+
+    def test_with_fields(self):
+        func = DeviceFunction(scheduler=True)
+        assert func.scheduler is True
