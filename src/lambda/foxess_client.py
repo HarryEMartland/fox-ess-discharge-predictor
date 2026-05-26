@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = 'https://www.foxesscloud.com'
 HISTORY_PATH = '/op/v0/device/history/query'
+DEVICE_DETAIL_PATH = '/op/v1/device/detail'
 
 
 @dataclass
@@ -29,6 +30,39 @@ class HistoryVariable:
 class HistoryDeviceResult:
     device_sn: str
     variables: list[HistoryVariable] = field(default_factory=list)
+
+
+@dataclass
+class DeviceFunction:
+    scheduler: bool = False
+
+
+@dataclass
+class BatteryInfo:
+    battery_sn: str = ''
+    type: str = ''
+    version: str = ''
+    model: str = ''
+    capacity: int = 0
+    product_date: int = 0
+
+
+@dataclass
+class DeviceDetail:
+    device_sn: str = ''
+    module_sn: str = ''
+    station_id: str = ''
+    station_name: str = ''
+    afci_version: str = ''
+    manager_version: str = ''
+    master_version: str = ''
+    slave_version: str = ''
+    hardware_version: str = ''
+    status: int = 0
+    capacity: float = 0.0
+    third_party_gen: bool = False
+    function: DeviceFunction | None = None
+    battery_list: list[BatteryInfo] = field(default_factory=list)
 
 
 class FoxESSClientError(Exception):
@@ -99,6 +133,59 @@ class FoxESSClient:
             results.append(HistoryDeviceResult(device_sn=device_sn, variables=variables_list))
 
         return results
+
+    def get_device_detail(self, sn: str) -> DeviceDetail:
+        url = f'{self.base_url}{DEVICE_DETAIL_PATH}'
+        headers = self._build_headers(DEVICE_DETAIL_PATH)
+        params = {'sn': sn}
+
+        logger.info('Fetching device detail for %s', sn)
+        resp = requests.get(url, params=params, headers=headers, timeout=30)
+        resp.raise_for_status()
+
+        payload = resp.json()
+        errno = payload.get('errno', -1)
+        if errno != 0:
+            raise FoxESSClientError(f'API error (errno={errno}): {payload.get("msg", "unknown")}')
+
+        result = payload.get('result', {})
+        if not result:
+            raise FoxESSClientError('API returned empty result')
+
+        function = None
+        func_data = result.get('function')
+        if func_data is not None:
+            function = DeviceFunction(scheduler=func_data.get('scheduler', False))
+
+        battery_list = []
+        for bat in result.get('batteryList', []):
+            battery_list.append(
+                BatteryInfo(
+                    battery_sn=bat.get('batterySN', ''),
+                    type=bat.get('type', ''),
+                    version=bat.get('version', ''),
+                    model=bat.get('model', ''),
+                    capacity=bat.get('capicty', 0),
+                    product_date=bat.get('productDate', 0),
+                )
+            )
+
+        return DeviceDetail(
+            device_sn=result.get('deviceSN', ''),
+            module_sn=result.get('moduleSN', ''),
+            station_id=result.get('stationID', ''),
+            station_name=result.get('stationName', ''),
+            afci_version=result.get('afciVersion', ''),
+            manager_version=result.get('managerVersion', ''),
+            master_version=result.get('masterVersion', ''),
+            slave_version=result.get('slaveVersion', ''),
+            hardware_version=result.get('hardwareVersion', ''),
+            status=result.get('status', 0),
+            capacity=result.get('capacity', 0.0),
+            third_party_gen=result.get('thirdPartyGen', False),
+            function=function,
+            battery_list=battery_list,
+        )
 
 
 if __name__ == '__main__':
