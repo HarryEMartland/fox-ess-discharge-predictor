@@ -7,6 +7,7 @@
 - **Entry**: `bin/app.ts`
 - **Lambda**: Python 3.11 in `src/lambda/`
 - **API Docs**: https://www.foxesscloud.com/public/i18n/en/OpenApiDocument.html
+- **Octopus API**: https://api.octopus.energy/v1/schema?namespaces=default
 
 ## Commands
 
