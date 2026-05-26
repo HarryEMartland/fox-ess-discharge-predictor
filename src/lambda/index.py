@@ -10,10 +10,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def handler(event: dict, context: dict) -> dict:
+def handler(event: dict, context: object) -> dict:
     logger.info('Fox ESS Discharge Predictor started')
     logger.info(f'Event: {json.dumps(event)}')
-    logger.info(f'Context: {json.dumps(context)}')
+    logger.info(
+        'Context: function_name=%s, aws_request_id=%s',
+        getattr(context, 'function_name', 'unknown'),
+        getattr(context, 'aws_request_id', 'unknown'),
+    )
 
     foxess_api_key = os.environ.get('FOXESS_API_KEY')
     foxess_device_sn = os.environ.get('FOXESS_DEVICE_SN')
@@ -52,10 +56,11 @@ def handler(event: dict, context: dict) -> dict:
         logger.warning('OCTOPUS_API_KEY or OCTOPUS_ACCOUNT_NUMBER not set, skipping Octopus data')
 
     current_time = datetime.now(UTC)
+    function_name = getattr(context, 'function_name', 'fox-ess-discharge-predictor')
 
     prediction_data = {
         'timestamp': current_time.isoformat(),
-        'function_name': context.get('function_name', 'fox-ess-discharge-predictor'),
+        'function_name': function_name,
         'execution_time': current_time.strftime('%Y-%m-%d %H:%M:%S UTC'),
         'status': 'completed',
         'prediction': {
@@ -76,10 +81,12 @@ def handler(event: dict, context: dict) -> dict:
 
 
 if __name__ == '__main__':
+    from types import SimpleNamespace
+
     test_event = {}
-    test_context = {
-        'function_name': 'fox-ess-discharge-predictor',
-        'aws_request_id': 'test-123',
-    }
+    test_context = SimpleNamespace(
+        function_name='fox-ess-discharge-predictor',
+        aws_request_id='test-123',
+    )
     result = handler(test_event, test_context)
     print(json.dumps(result, indent=2))

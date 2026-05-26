@@ -1,13 +1,21 @@
 import json
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from index import handler
 
 
+def _context(function_name: str = 'fox-ess-discharge-predictor') -> SimpleNamespace:
+    return SimpleNamespace(
+        function_name=function_name,
+        aws_request_id='test-123',
+    )
+
+
 def test_handler_returns_200():
     event = {}
-    context = {'function_name': 'fox-ess-discharge-predictor'}
+    context = _context()
 
     result = handler(event, context)
 
@@ -16,7 +24,7 @@ def test_handler_returns_200():
 
 def test_handler_returns_valid_json_body():
     event = {}
-    context = {'function_name': 'fox-ess-discharge-predictor'}
+    context = _context()
 
     result = handler(event, context)
     body = json.loads(result['body'])
@@ -26,7 +34,7 @@ def test_handler_returns_valid_json_body():
 
 def test_handler_body_contains_expected_keys():
     event = {}
-    context = {'function_name': 'fox-ess-discharge-predictor'}
+    context = _context()
 
     result = handler(event, context)
     body = json.loads(result['body'])
@@ -40,7 +48,7 @@ def test_handler_body_contains_expected_keys():
 
 def test_handler_prediction_contains_expected_keys():
     event = {}
-    context = {'function_name': 'fox-ess-discharge-predictor'}
+    context = _context()
 
     result = handler(event, context)
     prediction = json.loads(result['body'])['prediction']
@@ -53,7 +61,7 @@ def test_handler_prediction_contains_expected_keys():
 
 def test_handler_prediction_values():
     event = {}
-    context = {'function_name': 'fox-ess-discharge-predictor'}
+    context = _context()
 
     result = handler(event, context)
     prediction = json.loads(result['body'])['prediction']
@@ -66,7 +74,7 @@ def test_handler_prediction_values():
 
 def test_handler_status_is_completed():
     event = {}
-    context = {'function_name': 'fox-ess-discharge-predictor'}
+    context = _context()
 
     result = handler(event, context)
     body = json.loads(result['body'])
@@ -76,7 +84,7 @@ def test_handler_status_is_completed():
 
 def test_handler_uses_context_function_name():
     event = {}
-    context = {'function_name': 'custom-function-name'}
+    context = _context(function_name='custom-function-name')
 
     result = handler(event, context)
     body = json.loads(result['body'])
@@ -86,7 +94,7 @@ def test_handler_uses_context_function_name():
 
 def test_handler_uses_default_function_name_when_missing():
     event = {}
-    context = {}
+    context = SimpleNamespace(aws_request_id='test-123')
 
     result = handler(event, context)
     body = json.loads(result['body'])
@@ -96,7 +104,7 @@ def test_handler_uses_default_function_name_when_missing():
 
 def test_handler_timestamp_is_iso_format():
     event = {}
-    context = {'function_name': 'fox-ess-discharge-predictor'}
+    context = _context()
 
     result = handler(event, context)
     body = json.loads(result['body'])
@@ -112,7 +120,7 @@ def test_handler_timestamp_is_current_time(mock_datetime):
     mock_datetime.timezone = timezone
 
     event = {}
-    context = {'function_name': 'fox-ess-discharge-predictor'}
+    context = _context()
 
     result = handler(event, context)
     body = json.loads(result['body'])
