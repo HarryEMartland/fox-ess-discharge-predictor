@@ -23,7 +23,18 @@ export class FoxEssDischargePredictorStack extends Stack {
     const dischargePredictorLambda = new Function(this, 'DischargePredictorFunction', {
       runtime: Runtime.PYTHON_3_11,
       handler: 'index.handler',
-      code: Code.fromAsset('src/lambda'),
+      code: Code.fromAsset('src/lambda', {
+        bundling: {
+          image: Runtime.PYTHON_3_11.bundlingImage,
+          command: [
+            'bash',
+            '-c',
+            ['pip install -r requirements.txt -t /asset-output', 'cp -a . /asset-output'].join(
+              ' && '
+            ),
+          ],
+        },
+      }),
       role: lambdaExecutionRole,
       functionName: 'fox-ess-discharge-predictor',
       memorySize: 128,
