@@ -70,7 +70,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: pip install pytest pytest-httpserver requests
+        run: pip install -r requirements.txt pytest pytest-httpserver
 
       - name: Run tests
         run: python -m pytest src/lambda/ -v
