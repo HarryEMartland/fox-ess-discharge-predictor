@@ -11,6 +11,9 @@ from foxess_client import (
     HistoryDataPoint,
     HistoryDeviceResult,
     HistoryVariable,
+    SchedulerEnableResult,
+    SchedulerExtraParam,
+    TimeSegment,
 )
 
 MOCK_API_KEY = 'test-api-key-12345'
@@ -18,6 +21,7 @@ MOCK_SN = 'ABC123DEF'
 
 HISTORY_PATH = '/op/v0/device/history/query'
 DEVICE_DETAIL_PATH = '/op/v1/device/detail'
+SCHEDULER_ENABLE_PATH = '/op/v2/device/scheduler/enable'
 
 MOCK_SUCCESS_BODY = {
     'errno': 0,
@@ -394,3 +398,150 @@ class TestDeviceFunctionDataclass:
     def test_with_fields(self):
         func = DeviceFunction(scheduler=True)
         assert func.scheduler is True
+
+
+MOCK_SCHEDULER_ENABLE_BODY = {
+    'errno': 0,
+    'result': {
+        'deviceSN': MOCK_SN,
+        'isDefault': False,
+    },
+}
+
+
+class TestFoxESSClientScheduler:
+    def test_set_time_segment_success(self, httpserver, client):
+        httpserver.expect_request(SCHEDULER_ENABLE_PATH, method='POST').respond_with_json(
+            MOCK_SCHEDULER_ENABLE_BODY
+        )
+        groups = [
+            TimeSegment(
+                enable=1, startHour=0, startMinute=0, endHour=1, endMinute=59,
+                workMode='SelfUse',
+            ),
+        ]
+        result = client.set_time_segment(device_sn=MOCK_SN, groups=groups)
+        assert isinstance(result, SchedulerEnableResult)
+        assert result.device_sn == MOCK_SN
+        assert result.is_default is False
+
+    def test_set_time_segment_with_extra_param(self, httpserver, client):
+        httpserver.expect_request(SCHEDULER_ENABLE_PATH, method='POST').respond_with_json(
+            MOCK_SCHEDULER_ENABLE_BODY
+        )
+        groups = [
+            TimeSegment(
+                enable=1, startHour=2, startMinute=0, endHour=4, endMinute=0,
+                workMode='ForceCharge',
+                extraParam=SchedulerExtraParam(minSocOnGrid=10, fdSoc=90, fdPwr=3000),
+            ),
+        ]
+        result = client.set_time_segment(device_sn=MOCK_SN, groups=groups)
+        assert result.device_sn == MOCK_SN
+
+    def test_set_time_segment_multiple_groups(self, httpserver, client):
+        httpserver.expect_request(SCHEDULER_ENABLE_PATH, method='POST').respond_with_json(
+            MOCK_SCHEDULER_ENABLE_BODY
+        )
+        groups = [
+            TimeSegment(enable=1, startHour=0, startMinute=0, endHour=6, endMinute=0, workMode='SelfUse'),
+            TimeSegment(enable=1, startHour=6, startMinute=0, endHour=12, endMinute=0, workMode='Feedin'),
+        ]
+        result = client.set_time_segment(device_sn=MOCK_SN, groups=groups)
+        assert result.device_sn == MOCK_SN
+
+    def test_set_time_segment_with_is_default(self, httpserver, client):
+        body = {
+            'errno': 0,
+            'result': {'deviceSN': MOCK_SN, 'isDefault': True},
+        }
+        httpserver.expect_request(SCHEDULER_ENABLE_PATH, method='POST').respond_with_json(body)
+        groups = [
+            TimeSegment(enable=1, startHour=0, startMinute=0, endHour=23, endMinute=59, workMode='SelfUse'),
+        ]
+        result = client.set_time_segment(device_sn=MOCK_SN, groups=groups, is_default=True)
+        assert result.is_default is True
+
+    def test_set_time_segment_api_error(self, httpserver, client):
+        body = {'errno': 40001, 'msg': 'device not found'}
+        httpserver.expect_request(SCHEDULER_ENABLE_PATH, method='POST').respond_with_json(body)
+        with pytest.raises(FoxESSClientError) as exc:
+            client.set_time_segment(device_sn='UNKNOWN', groups=[])
+        assert 'device not found' in str(exc.value)
+
+    def test_set_time_segment_empty_groups(self, httpserver, client):
+        httpserver.expect_request(SCHEDULER_ENABLE_PATH, method='POST').respond_with_json(
+            MOCK_SCHEDULER_ENABLE_BODY
+        )
+        result = client.set_time_segment(device_sn=MOCK_SN, groups=[])
+        assert result.device_sn == MOCK_SN
+
+    def test_set_time_segment_extra_param_empty(self, httpserver, client):
+        httpserver.expect_request(SCHEDULER_ENABLE_PATH, method='POST').respond_with_json(
+            MOCK_SCHEDULER_ENABLE_BODY
+        )
+        groups = [
+            TimeSegment(
+                enable=1, startHour=0, startMinute=0, endHour=1, endMinute=0,
+                workMode='SelfUse',
+                extraParam=SchedulerExtraParam(),
+            ),
+        ]
+        result = client.set_time_segment(device_sn=MOCK_SN, groups=groups)
+        assert result.device_sn == MOCK_SN
+
+    def test_set_time_segment_http_error(self, httpserver, client):
+        httpserver.expect_request(SCHEDULER_ENABLE_PATH, method='POST').respond_with_json(
+            {'errno': 40256, 'msg': 'invalid auth'}, status=401
+        )
+        with pytest.raises(Exception):
+            client.set_time_segment(device_sn=MOCK_SN, groups=[])
+
+
+class TestSchedulerExtraParamDataclass:
+    def test_defaults_all_none(self):
+        p = SchedulerExtraParam()
+        assert p.minSocOnGrid is None
+        assert p.fdSoc is None
+        assert p.fdPwr is None
+        assert p.maxSoc is None
+        assert p.importLimit is None
+        assert p.exportLimit is None
+        assert p.pvLimit is None
+        assert p.reactivePower is None
+
+    def test_with_values(self):
+        p = SchedulerExtraParam(minSocOnGrid=10, fdSoc=90, fdPwr=3000)
+        assert p.minSocOnGrid == 10
+        assert p.fdSoc == 90
+        assert p.fdPwr == 3000
+
+
+class TestTimeSegmentDataclass:
+    def test_basic(self):
+        t = TimeSegment(enable=1, startHour=0, startMinute=0, endHour=23, endMinute=59, workMode='SelfUse')
+        assert t.enable == 1
+        assert t.startHour == 0
+        assert t.endHour == 23
+        assert t.workMode == 'SelfUse'
+        assert t.extraParam is None
+
+    def test_with_extra_param(self):
+        extra = SchedulerExtraParam(fdSoc=90)
+        t = TimeSegment(
+            enable=1, startHour=0, startMinute=0, endHour=1, endMinute=0,
+            workMode='ForceDischarge', extraParam=extra,
+        )
+        assert t.extraParam is not None
+        assert t.extraParam.fdSoc == 90
+
+
+class TestSchedulerEnableResultDataclass:
+    def test_defaults(self):
+        r = SchedulerEnableResult(device_sn='SN123')
+        assert r.device_sn == 'SN123'
+        assert r.is_default is False
+
+    def test_with_is_default(self):
+        r = SchedulerEnableResult(device_sn='SN123', is_default=True)
+        assert r.is_default is True
